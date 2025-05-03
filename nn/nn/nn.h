@@ -2,6 +2,11 @@
 
 namespace nn
 {
+	class Sequential
+	{
+
+	};
+
 	class Layer
 	{
 	public:
@@ -9,4 +14,12 @@ namespace nn
 		virtual void forward();
 		virtual void backward();
 	};
+
+	class Linear : Layer
+	{
+	public:
+		Linear(int in_dim, int out_dim);
+	};
+
+
 }

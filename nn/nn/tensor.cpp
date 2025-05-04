@@ -5,7 +5,7 @@
 namespace Tensor
 {
 
-	unsigned int Tensor::getNumCores()
+	unsigned int getNumCores()
 	{
 		static unsigned int numCores = [] {
 			unsigned int temp = std::thread::hardware_concurrency();
@@ -42,11 +42,24 @@ namespace Tensor
 		{
 			size *= shape.dims[i];
 		}
+		//std::cout << size;
 		this->arraySize = size;
-		this->array = new float[arraySize] {};
+		this->array = std::make_shared<float[]>(arraySize);
 	}
 
-	tensor::tensor(std::vector<int> v)  
+	tensor::tensor(Shape shape, std::shared_ptr<float[]> array)
+	{
+		this->shape = shape;
+		int size = 1;
+		for (int i : this->shape.dims)
+		{
+			size *= this->shape.dims[i];
+		}
+		this->arraySize = size;
+		this->array = array;
+	}
+
+	tensor::tensor(std::vector<unsigned int> v)  
 	{
 		shape = { v };
 		int size = 1;
@@ -54,14 +67,36 @@ namespace Tensor
 		{
 			size *= shape.dims[i];
 		}
+		//std::cout << size;
 		this->arraySize = size;
-		this->array = new float[arraySize] {};
+		this->array = std::make_shared<float[]>(arraySize);
 	}
 
-	tensor::~tensor()
+	/*tensor::tensor(const tensor& other)
 	{
-		delete[] array;
+
 	}
+
+	tensor::tensor(tensor&& other)
+	{
+		shape = other.shape;
+		array = other.array;
+		other.array = nullptr;
+		arraySize = other.arraySize;
+	}*/
+
+	/*tensor& tensor::operator=(tensor&& other)
+	{
+		if (this != &other)
+		{
+			delete[] array;
+			array = other.array;
+			other.array = nullptr;
+			shape = other.shape;
+			arraySize = other.arraySize;
+		}
+		return *this;
+	}*/
 
 	int tensor::find_idx(const std::vector<int>& indices)
 	{
@@ -83,19 +118,15 @@ namespace Tensor
 		{
 			arraySize *= shape.dims[i];
 		}
-		tensor* t = new tensor(shape, new float[arraySize] {value});
+		std::shared_ptr<float[]> array = std::make_shared<float[]>(arraySize);
+		std::fill(array.get(), array.get() + arraySize, value);
+		tensor* t = new tensor(shape, array);
 		return *t;
-	}
-
-	std::ostream& operator<<(std::ostream& out, tensor& t)
-	{
-		out << "tensor ";
-		return out;
 	}
 
 	tensor tensor::operateFloat(float(*func)(float, float), float value)
 	{
-		float* newArray = new float[arraySize] {};
+		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(arraySize);
 
 		unsigned int numCores = getNumCores();
 		size_t blockSize = arraySize / numCores;
@@ -147,7 +178,7 @@ namespace Tensor
 	tensor tensor::operateTensor(float(*func)(float, float), const tensor& a)
 	{
 		assert(this->shape == a.shape);
-		float* newArray = new float[arraySize] {};
+		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(arraySize);
 
 		unsigned int numCores = getNumCores();
 		size_t blockSize = arraySize / numCores;
@@ -204,12 +235,12 @@ namespace Tensor
 		unsigned int rows = shape.dims[m1_d - 2];
 		unsigned int cols = a.shape.dims[m1_d - 1];
 		unsigned int cPart = shape.dims[m1_d - 1];
-
+		std::cout << arraySize << ", " << cPart << std::endl;
 		unsigned int totalRows = arraySize / cPart;
-		float* newArray = new float[totalRows * cols] {};
+		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(totalRows * cols);
 
 		unsigned int cores = std::min(getNumCores(), totalRows);
-
+		std::cout << cores;
 		std::vector<std::thread> threads;
 		unsigned int blocks = totalRows / cores;
 		unsigned int remainder = totalRows % cores;
@@ -237,7 +268,7 @@ namespace Tensor
 		}
 		for (auto& t : threads) t.join();
 
-		std::vector<int> shapeArray(shape.dims);
+		std::vector<unsigned int> shapeArray(shape.dims);
 		shapeArray[m1_d - 1] = cols;
 		Shape newShape = { shapeArray };
 		return tensor(newShape, newArray);
@@ -257,5 +288,40 @@ namespace Tensor
 	Shape tensor::getShape()
 	{
 		return shape;
+	}
+
+	std::ostream& operator<<(std::ostream& out, tensor& t)
+	{
+		out << "tensor ";
+		tensorPrint(0, 0, t.shape.dims, t.array, out);
+		return out;
+	}
+
+	void tensorPrint(unsigned int dim, unsigned int idx, std::vector<unsigned int>& dims, std::shared_ptr<float[]> array, std::ostream& out)
+	{
+		if (dim < dims.size() - 1) {
+			unsigned int blockSize = 1;
+			for (unsigned int j = dim + 1; j < dims.size(); j++)
+			{
+				blockSize *= dims[j];
+			}
+
+			for (unsigned int i = 0; i < dims[dim]; i++)
+			{
+				out << "[";
+				tensorPrint(dim + 1, idx + blockSize*i, dims, array, out);
+				out << "]" ;
+			}
+		}
+		else
+		{
+			//std::cout << "last dim" << std::endl;
+			out << array[idx];
+			for (int i = 1; i < dims[dim]; i++)
+			{
+				//std::cout << idx + i;
+				out << "," << array[idx + i];
+			}
+		}
 	}
 }

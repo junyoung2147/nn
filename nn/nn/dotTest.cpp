@@ -128,42 +128,42 @@ void block_dot(const float* a, const float* b, float* c, const int n = 1000, con
 	for (auto& t : threads) t.join();
 }
 
-int main(void)
-{
-	std::cout << getNumCores() << std::endl;
-	time_t start = clock();
-	const int n = 640;
-	float* a = new float[n*n]{  };
-	float* b = new float[n*n]{  };
-	float* c = new float[n*n]{};
-	/*for (int i = 0; i < 10; i++)
-	{
-		basicDot(a, b, c, n);
-	}*/
-	time_t end = clock();
-	//std::cout << "직렬 행렬곱 : " << end - start << std::endl;
-
-	start = clock();
-	for (int i = 0; i < 10; i++)
-	{
-		row_wise_dot(a, b, c, n);
-	}
-	end = clock();
-	std::cout << "row-wise 병렬 행렬곱 : " << end - start << std::endl;
-
-	start = clock();
-	for (int i = 0; i < 10; i++)
-	{
-		col_wise_dot(a, b, c, n);
-	}
-	end = clock();
-	std::cout << "col-wise 병렬 행렬곱 : " << end - start << std::endl;
-
-	start = clock();
-	for (int i = 0; i < 10; i++)
-	{
-		block_dot(a, b, c, n);
-	}
-	end = clock();
-	std::cout << "블록 병렬 행렬곱 : " << end - start << std::endl;
-}
+//int main(void)
+//{
+//	std::cout << getNumCores() << std::endl;
+//	time_t start = clock();
+//	const int n = 640;
+//	float* a = new float[n*n]{  };
+//	float* b = new float[n*n]{  };
+//	float* c = new float[n*n]{};
+//	/*for (int i = 0; i < 10; i++)
+//	{
+//		basicDot(a, b, c, n);
+//	}*/
+//	time_t end = clock();
+//	//std::cout << "직렬 행렬곱 : " << end - start << std::endl;
+//
+//	start = clock();
+//	for (int i = 0; i < 10; i++)
+//	{
+//		row_wise_dot(a, b, c, n);
+//	}
+//	end = clock();
+//	std::cout << "row-wise 병렬 행렬곱 : " << end - start << std::endl;
+//
+//	start = clock();
+//	for (int i = 0; i < 10; i++)
+//	{
+//		col_wise_dot(a, b, c, n);
+//	}
+//	end = clock();
+//	std::cout << "col-wise 병렬 행렬곱 : " << end - start << std::endl;
+//
+//	start = clock();
+//	for (int i = 0; i < 10; i++)
+//	{
+//		block_dot(a, b, c, n);
+//	}
+//	end = clock();
+//	std::cout << "블록 병렬 행렬곱 : " << end - start << std::endl;
+//}

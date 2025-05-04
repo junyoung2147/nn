@@ -21,6 +21,12 @@
     <ClCompile Include="nn.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="dotTest.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="tensorTest.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tensor.h">

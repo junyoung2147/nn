@@ -1,6 +1,7 @@
 #include "tensor.h"
 #include<assert.h>
 #include<thread>
+#include<cmath>
 
 namespace Tensor
 {
@@ -24,7 +25,7 @@ namespace Tensor
 		return out;
 	}
 
-	bool Shape::operator==(const Shape& s)
+	bool Shape::operator==(const Shape& s) const
 	{
 		if (dims.size() != s.dimension()) return false;
 
@@ -33,6 +34,14 @@ namespace Tensor
 			if (dims[i] != s.dims[i]) return false;
 		}
 		return true;
+	}
+
+	tensor::tensor()
+	{
+		shape = {};
+		stride = {};
+		arraySize = 0;
+		array = nullptr;
 	}
 
 	tensor::tensor(Shape shape) : shape(shape)
@@ -45,6 +54,7 @@ namespace Tensor
 		//std::cout << size;
 		this->arraySize = size;
 		this->array = std::make_shared<float[]>(arraySize);
+		initStride();
 	}
 
 	tensor::tensor(Shape shape, std::shared_ptr<float[]> array)
@@ -57,6 +67,7 @@ namespace Tensor
 		}
 		this->arraySize = size;
 		this->array = array;
+		initStride();
 	}
 
 	tensor::tensor(std::vector<unsigned int> v)  
@@ -70,6 +81,18 @@ namespace Tensor
 		//std::cout << size;
 		this->arraySize = size;
 		this->array = std::make_shared<float[]>(arraySize);
+		initStride();
+	}
+
+	void tensor::initStride()
+	{
+		int size = shape.dimension();
+		stride = std::vector<unsigned int>(size);
+		stride[size - 1] = 1;
+		for (int i = size - 2; i >= 0; i--)
+		{
+			stride[i] = stride[i + 1] * shape.dims[i + 1];
+		}
 	}
 
 	/*tensor::tensor(const tensor& other)
@@ -98,15 +121,16 @@ namespace Tensor
 		return *this;
 	}*/
 
-	int tensor::find_idx(const std::vector<int>& indices)
+	int tensor::find_idx(const std::vector<int>& indices) const
 	{
 		assert(indices.size() == shape.dimension());
 		int idx = 0;
-		int stride = 1;
+		//int stride = 1;
 		for (int i = shape.dimension() - 1; i >= 0; i--)
 		{
-			idx += indices[i] * stride;
-			stride *= shape.dims[i];
+			/*idx += indices[i] * stride;
+			stride *= shape.dims[i];*/
+			idx += indices[i] * stride[i];
 		}
 		return idx;
 	}
@@ -124,7 +148,7 @@ namespace Tensor
 		return *t;
 	}
 
-	tensor tensor::operateFloat(float(*func)(float, float), float value)
+	tensor tensor::operateFloat(float(*func)(float, float), float value) const
 	{
 		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(arraySize);
 
@@ -155,27 +179,37 @@ namespace Tensor
 		return tensor(shape, newArray);
 	}
 
-	tensor tensor::operator+(const float a)
+	tensor tensor::operator+(const float a) const
 	{
 		return operateFloat([](float a, float b) {return a + b; }, a);
 	}
 
-	tensor tensor::operator-(const float a)
+	tensor tensor::operator-(const float a) const
 	{
 		return operateFloat([](float a, float b) {return a - b; }, a);
 	}
 
-	tensor tensor::operator*(const float a)
+	tensor operator-(const float a, const tensor& b)
+	{
+		return b.operateFloat([](float a, float b) {return a - b; }, a);
+	}
+
+	tensor tensor::operator*(const float a) const
 	{
 		return operateFloat([](float a, float b) {return a * b; }, a);
 	}
 
-	tensor tensor::operator/(const float a)
+	tensor tensor::operator/(const float a) const
 	{
 		return operateFloat([](float a, float b) {return a / b; }, a);
 	}
 
-	tensor tensor::operateTensor(float(*func)(float, float), const tensor& a)
+	tensor operator/(const float a, const tensor& b)
+	{
+		return b.operateFloat([](float a, float b) {return a / b; }, a);
+	}
+
+	tensor tensor::operateTensor(float(*func)(float, float), const tensor& a) const
 	{
 		assert(this->shape == a.shape);
 		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(arraySize);
@@ -204,27 +238,57 @@ namespace Tensor
 		return tensor(shape, newArray);
 	}
 
-	tensor tensor::operator+(const tensor& a)
+	tensor tensor::operator+(const tensor& a) const
 	{
 		return operateTensor([](float a, float b) {return a + b; }, a);
 	}
 
-	tensor tensor::operator-(const tensor& a)
+	tensor tensor::operator-(const tensor& a) const
 	{
 		return operateTensor([](float a, float b) {return a - b; }, a);
 	}
 
-	tensor tensor::operator*(const tensor& a)
+	tensor tensor::operator*(const tensor& a) const
 	{
 		return operateTensor([](float a, float b) {return a * b; }, a);
 	}
 
-	tensor tensor::operator/(const tensor& a)
+	tensor tensor::operator/(const tensor& a) const
 	{
 		return operateTensor([](float a, float b) {return a / b; }, a);
 	}
 
-	tensor tensor::dot(const tensor& a)
+	tensor tensor::operator<(const tensor& other) const
+	{
+		return operateTensor([](float a, float b)->float {return a < b; }, other);
+	}
+
+	tensor tensor::operator>(const tensor& other) const
+	{
+		return operateTensor([](float a, float b)->float {return a > b; }, other);
+	}
+
+	tensor tensor::operator==(const tensor& other) const
+	{
+		return operateTensor([](float a, float b)->float {return a == b; }, other);
+	}
+
+	tensor tensor::operator<(const float other) const
+	{
+		return operateFloat([](float a, float b)->float {return a < b; }, other);
+	}
+
+	tensor tensor::operator>(const float other) const
+	{
+		return operateFloat([](float a, float b)->float {return a > b; }, other);
+	}
+
+	tensor tensor::operator==(const float other) const
+	{
+		return operateFloat([](float a, float b)->float {return a == b; }, other);
+	}
+
+	tensor tensor::dot(const tensor& a) const
 	{
 		//row를 단위로 병렬 처리, 3차원 이상인 경우 상위 2차원을 기준으로 행렬곱
 		unsigned int m1_d = shape.dimension();
@@ -244,10 +308,11 @@ namespace Tensor
 		std::vector<std::thread> threads;
 		unsigned int blocks = totalRows / cores;
 		unsigned int remainder = totalRows % cores;
+		unsigned int start = 0;
 
-		for (unsigned int t = 0, start = 0; t < cores; ++t) {
+		for (unsigned int t = 0; t < cores; ++t) {
 			unsigned int end = start + blocks + (t < remainder ? 1 : 0);
-			threads.emplace_back([start, end, rows, cols, cPart, this, newArray, &a]() {
+			threads.emplace_back([start, end, rows, cols, cPart, m1_d, this, newArray, &a]() {
 				for (unsigned int idx = start; idx < end; ++idx) {
 					//현재 idx 이전의 행렬 수
 					unsigned int batch = idx / rows;
@@ -257,8 +322,8 @@ namespace Tensor
 						float sum = 0;
 						for (unsigned int k = 0; k < cPart; ++k) {
 							//행렬 크기(행 x 열) * 현재 idx 이전의 행렬 개수 + 행 * 전체 열 + 열 로 인덱스 계산
-							sum += array[batch * rows * cPart + i * cPart + k] *
-								a.array[batch * cPart * cols + k * cols + j];
+							sum += array[batch * rows * cPart + i * stride[m1_d - 2] + k * stride[m1_d - 1]] *
+								a.array[batch * cPart * cols + k * a.stride[m1_d - 2] + j * a.stride[m1_d - 1]];
 						}
 						newArray[batch * rows * cols + i * cols + j] = sum;
 					}
@@ -274,6 +339,15 @@ namespace Tensor
 		return tensor(newShape, newArray);
 	}
 
+	tensor tensor::transpose()
+	{
+		tensor result = *this;
+		unsigned int size = shape.dimension();
+		std::swap(shape.dims[size - 1], shape.dims[size - 2]);
+		std::swap(stride[size - 1], stride[size - 2]);
+		return result;
+	}
+
 	void tensor::reshape(Shape& shape)
 	{
 		int size = 1;
@@ -285,7 +359,7 @@ namespace Tensor
 		this->shape = shape;
 	}
 
-	Shape tensor::getShape()
+	Shape tensor::getShape() const
 	{
 		return shape;
 	}
@@ -317,11 +391,63 @@ namespace Tensor
 		{
 			//std::cout << "last dim" << std::endl;
 			out << array[idx];
-			for (int i = 1; i < dims[dim]; i++)
+			for (unsigned int i = 1; i < dims[dim]; i++)
 			{
 				//std::cout << idx + i;
 				out << "," << array[idx + i];
 			}
 		}
+	}
+
+	tensor exp(const tensor& a)
+	{
+		unsigned int cores = getNumCores();
+		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(a.arraySize);
+		unsigned int blockSize = a.arraySize / cores;
+		unsigned int remainder = a.arraySize % cores;
+
+		std::vector<std::thread> threads;
+
+		unsigned int start = 0;
+
+		for (unsigned int i = 0; i < cores; i++)
+		{
+			unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
+			threads.emplace_back([start, end, a, newArray] {
+				for (int idx = start; idx < end; idx++)
+				{
+					newArray[idx] = std::exp(a.array[idx]);
+				}
+				});
+		}
+		return tensor(a.shape, newArray);
+	}
+
+	tensor max(const tensor& a, const tensor& b)
+	{
+		return a.operateTensor([](float a, float b) {
+			return a > b ? a : b;
+			}, b);
+	}
+
+	tensor min(const tensor& a, const tensor& b)
+	{
+		return a.operateTensor([](float a, float b) {
+			return a < b ? a : b;
+			}, b);
+	}
+
+	tensor max(const tensor& a, const float b)
+	{
+		return a.operateFloat([](float a, float b) {
+			return a > b ? a : b;
+			}, b);
+	}
+
+	tensor min(const tensor& a, const float b)
+	{
+		return a.operateFloat([](float a, float b) {
+			return a < b ? a : b;
+			}, b);
 	}
 }

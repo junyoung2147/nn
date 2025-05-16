@@ -128,10 +128,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="NetworkTest.cpp" />
     <ClCompile Include="nn.cpp" />
     <ClCompile Include="tensor.cpp" />
     <ClCompile Include="dotTest.cpp" />
     <ClCompile Include="tensorTest.cpp" />
+    <ClCompile Include="util.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="nn.h" />

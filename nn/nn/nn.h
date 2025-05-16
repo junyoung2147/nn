@@ -8,19 +8,70 @@ namespace nn
 {
 	class Sequential
 	{
+	public:
+		std::vector<Layer*> layers;
+		Sequential() {};
+		Sequential(std::vector<Layer*> layers) : layers(layers) {};
+		void add(Layer* layer);
+		tensor operator()(tensor input);
+		tensor backward(tensor grad_output);
+	};
 
+	class Model
+	{
+	public:
+		virtual void forward(tensor input);
+		virtual void backword(tensor grad_output);
+	private:
+		Model();
+	};
+
+	class Optimizer
+	{
+	public:
+		virtual void step() = 0;
+	private:
+		//Optimizer();
+	};
+
+	class SGD : public Optimizer
+	{
+	private:
+		std::vector<Layer*> layers;
+		float lr;
+	public:
+		SGD(std::vector<Layer*> layers, float lr = 0.001) : layers(layers), lr(lr) {};
+		virtual void step() override;
+	};
+
+	class Loss
+	{
+	public:
+		virtual float operator()(const tensor& x, const tensor& y);
+		virtual tensor backward(const tensor& x, const tensor& y);
+	private:
+		//Loss();
+	};
+
+	class MSE : public Loss
+	{
+	public:
+		virtual float operator()(const tensor& x, const tensor& y) override;
+		virtual tensor backward(const tensor& x, const tensor& y) override;
 	};
 
 	class Layer
 	{
 	public:
 		virtual ~Layer() = default;
+		std::vector<tensor&> params;
+		std::vector<tensor&> deltas;
 		virtual tensor forward(const tensor& input) { return input; };
 		virtual tensor backward(const tensor& grad_output) { return grad_output; };
 		virtual void update(const float lr) {};
 	};
 
-	class Linear : Layer
+	class Linear : public Layer
 	{
 	private:
 		tensor w;
@@ -33,10 +84,9 @@ namespace nn
 		Linear(unsigned int in_dim, unsigned int out_dim);
 		virtual tensor forward(const tensor& input) override;
 		virtual tensor backward(const tensor& grad_output) override;
-		virtual void update(const float lr) override;
 	};
 
-	class ReLU : Layer
+	class ReLU : public Layer
 	{
 	private:
 		tensor input;
@@ -45,7 +95,7 @@ namespace nn
 		virtual tensor backward(const tensor& grad_output) override;
 	};
 
-	class Sigmoid : Layer
+	class Sigmoid : public Layer
 	{
 	private:
 		tensor input;

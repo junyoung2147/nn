@@ -40,12 +40,14 @@ namespace Tensor
 	{
 		shape = {};
 		stride = {};
+		offset = 0;
 		arraySize = 0;
 		array = nullptr;
 	}
 
 	tensor::tensor(Shape shape) : shape(shape)
 	{
+		offset = 0;
 		int size = 1;
 		for (int i : shape.dims)
 		{
@@ -59,6 +61,7 @@ namespace Tensor
 
 	tensor::tensor(Shape shape, std::shared_ptr<float[]> array)
 	{
+		offset = 0;
 		this->shape = shape;
 		int size = 1;
 		for (int i : this->shape.dims)
@@ -72,6 +75,7 @@ namespace Tensor
 
 	tensor::tensor(std::vector<unsigned int> v)  
 	{
+		offset = 0;
 		shape = { v };
 		int size = 1;
 		for (int i : shape.dims)
@@ -346,6 +350,25 @@ namespace Tensor
 		std::swap(shape.dims[size - 1], shape.dims[size - 2]);
 		std::swap(stride[size - 1], stride[size - 2]);
 		return result;
+	}
+
+	tensor tensor::slice(const unsigned int dim, const unsigned int start, const unsigned int end)
+	{
+		assert(start < end);
+		assert(shape.dimension() > dim);
+		Shape newShape = shape;
+		newShape.dims[dim] = end - start;
+		std::vector<int> startpos(shape.dimension(), 0);
+		startpos[dim] = start;
+		unsigned int newOffset = find_idx(startpos);
+		tensor result = tensor(newShape, array);
+		result.offset = newOffset;
+		return result;
+	}
+
+	tensor tensor::concatenate(const unsigned int dim, const tensor& other)
+	{
+
 	}
 
 	void tensor::reshape(Shape& shape)

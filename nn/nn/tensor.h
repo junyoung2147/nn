@@ -20,9 +20,9 @@ namespace Tensor
 	{
 	private:
 		Shape shape;
+		unsigned int offset;
 		std::vector<unsigned int> stride;
 		std::shared_ptr<float[]> array;
-		int arraySize;
 		int find_idx(const std::vector<int>& indices) const;
 		void initStride();
 		//사칙연산 중복 코드 따로 구현
@@ -38,10 +38,13 @@ namespace Tensor
 		tensor(tensor&& other);
 		~tensor();*/
 		//tensor& operator=(tensor&& other) noexcept;
+		int arraySize;
 		void reshape(Shape& shape);
 		Shape getShape() const;
 		tensor transpose();
 		tensor dot(const tensor& a) const;
+		tensor concatenate(const unsigned int dim, const tensor& other);
+		tensor slice(const unsigned int dim, const unsigned int start, const unsigned int end);
 		tensor operator+(const float a) const;
 		tensor operator-(const float a) const;
 		friend tensor operator-(const float a, const tensor& b);

@@ -6,11 +6,22 @@ using namespace Tensor;
 
 namespace nn
 {
+	class Layer
+	{
+	public:
+		virtual ~Layer() = default;
+		std::vector<tensor*> params;
+		std::vector<tensor*> deltas;
+		virtual tensor forward(const tensor& input) { return input; };
+		virtual tensor backward(const tensor& grad_output) { return grad_output; };
+		virtual void update(const float lr) {};
+	};
+
 	class Sequential
 	{
 	public:
 		std::vector<Layer*> layers;
-		Sequential() {};
+		Sequential() {  };
 		Sequential(std::vector<Layer*> layers) : layers(layers) {};
 		void add(Layer* layer);
 		tensor operator()(tensor input);
@@ -20,8 +31,8 @@ namespace nn
 	class Model
 	{
 	public:
-		virtual void forward(tensor input);
-		virtual void backword(tensor grad_output);
+		virtual void forward(tensor input) {};
+		virtual void backword(tensor grad_output) {};
 	private:
 		Model();
 	};
@@ -47,8 +58,8 @@ namespace nn
 	class Loss
 	{
 	public:
-		virtual float operator()(const tensor& x, const tensor& y);
-		virtual tensor backward(const tensor& x, const tensor& y);
+		virtual float operator()(const tensor& x, const tensor& y) = 0;
+		virtual tensor backward(const tensor& x, const tensor& y) = 0;
 	private:
 		//Loss();
 	};
@@ -60,15 +71,13 @@ namespace nn
 		virtual tensor backward(const tensor& x, const tensor& y) override;
 	};
 
-	class Layer
+	class CrossEntropy : public Loss
 	{
 	public:
-		virtual ~Layer() = default;
-		std::vector<tensor&> params;
-		std::vector<tensor&> deltas;
-		virtual tensor forward(const tensor& input) { return input; };
-		virtual tensor backward(const tensor& grad_output) { return grad_output; };
-		virtual void update(const float lr) {};
+		virtual float operator()(const tensor& x, const tensor& y) override;
+		virtual tensor backward(const tensor& x, const tensor& y) override;
+	private:
+		tensor softmax(const tensor& t);
 	};
 
 	class Linear : public Layer
@@ -91,6 +100,7 @@ namespace nn
 	private:
 		tensor input;
 	public:
+		ReLU() = default;
 		virtual tensor forward(const tensor& input) override;
 		virtual tensor backward(const tensor& grad_output) override;
 	};
@@ -100,6 +110,15 @@ namespace nn
 	private:
 		tensor input;
 		tensor sigmoid(const tensor& t);
+	public:
+		virtual tensor forward(const tensor& input) override;
+		virtual tensor backward(const tensor& grad_output) override;
+	};
+
+	class Softmax : public Layer
+	{
+	private:
+		tensor input;
 	public:
 		virtual tensor forward(const tensor& input) override;
 		virtual tensor backward(const tensor& grad_output) override;

@@ -9,6 +9,8 @@ namespace Tensor
 	//텐서 모양 구조체
 	struct Shape
 	{
+		Shape(std::vector<unsigned int> dims) : dims(dims) {};
+		Shape() {};
 		std::vector<unsigned int> dims;
 		int dimension() const { return dims.size(); }
 		friend std::ostream& operator<<(std::ostream& out, Shape& s);
@@ -28,7 +30,11 @@ namespace Tensor
 		//사칙연산 중복 코드 따로 구현
 		tensor operateFloat(float(*func)(float, float), float value) const;
 		tensor operateTensor(float(*func)(float, float), const tensor& a) const;
-
+		void updateFloat(float(*func)(float, float), float value) const;
+		void updateTensor(float(*func)(float, float), const tensor& a) const;
+		tensor operateBroadcast(tensor(*func)(const tensor&, const tensor&), const tensor& other, const unsigned int dim) const;
+		bool is_contiguous() const;
+		void get_multi_idx(std::vector<int>& multi_idx, unsigned int idx) const;
 	public:
 		tensor();
 		tensor(Shape shape);
@@ -44,7 +50,18 @@ namespace Tensor
 		tensor transpose();
 		tensor dot(const tensor& a) const;
 		tensor concatenate(const unsigned int dim, const tensor& other);
+		tensor sum(const unsigned int dim) const;
+		float sum() const;
+		float mean() const;
 		tensor slice(const unsigned int dim, const unsigned int start, const unsigned int end);
+		tensor broadcast_add(const tensor& other, const unsigned int dim) const;
+		tensor broadcast_sub(const tensor& other, const unsigned int dim) const;
+		tensor broadcast_mul(const tensor& other, const unsigned int dim) const;
+		tensor broadcast_div(const tensor& other, const unsigned int dim) const;
+		tensor& operator+=(const float a);
+		tensor& operator+=(const tensor& a);
+		tensor& operator-=(const float a);
+		tensor& operator-=(const tensor& a);
 		tensor operator+(const float a) const;
 		tensor operator-(const float a) const;
 		friend tensor operator-(const float a, const tensor& b);
@@ -87,15 +104,18 @@ namespace Tensor
 		}
 	};
 
-	void tensorPrint(unsigned int dim, unsigned int idx, std::vector<unsigned int>& dims, std::shared_ptr<float[]> array, std::ostream& out);
+	void tensorPrint(unsigned int dim, unsigned int idx, unsigned int offset, std::vector<unsigned int>& dims, std::shared_ptr<float[]> array, std::ostream& out);
 
 	//현재 기기의 논리 코어 수를 반환
 	unsigned int getNumCores();
 
 	tensor exp(const tensor& a);
 
-	tensor createFillTensor(Shape shape, float value);
-	tensor createXiavierTensor(Shape shape, float gain = 1);
-	tensor createNormalTensor(Shape shape, float mean = 0, float std = 1);
-	tensor createHeTensor(Shape shape, float a = 0, float gain = 1);
+	float uniformRandom(float min, float max);
+
+	tensor initFillTensor(Shape shape, float value);
+	tensor initUniformTensor(Shape shape, float min = 0, float max = 1);
+	tensor initXiavierTensor(Shape shape, float gain = 1);
+	tensor initNormalTensor(Shape shape, float mean = 0, float std = 1);
+	tensor initHeTensor(Shape shape, float a = 0, float gain = 1);
 }

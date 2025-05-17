@@ -41,5 +41,8 @@
     <ClInclude Include="nn.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="util.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -5,8 +5,8 @@ namespace nn
 {
 	Linear::Linear(unsigned int in_dim, unsigned int out_dim)
 	{
-		w = initUniformTensor(Shape({in_dim, out_dim}), 0, 0.04);
-		b = initUniformTensor(Shape({ 1, out_dim }), 0, 0.04);
+		w = initUniformTensor(Shape({in_dim, out_dim}), -0.1, 0.1);
+		b = initUniformTensor(Shape({ 1, out_dim }), -0.1, 0.1);
 		Shape s = w.getShape();
 		std::cout << s << std::endl;
 		params.push_back(&w);
@@ -22,7 +22,7 @@ namespace nn
 	tensor Linear::forward(const tensor& input)
 	{
 		this->input = input;
-		output = input.dot(w);
+		output = input.dot(w).broadcast_add(b, 0);
 		//std::cout << "output: " << output << std::endl;
 		return output; // [batch_size, out_dim]
 	}
@@ -31,7 +31,7 @@ namespace nn
 	{
 		delta_b = grad_output.sum(0);
 		//std::cout << delta_b << input << std::endl;
-		delta_w = input.transpose().dot(grad_output).broadcast_add(b, 0);
+		delta_w = input.transpose().dot(grad_output);
 		return grad_output.dot(w.transpose());
 	}
 
@@ -67,6 +67,14 @@ namespace nn
 		return grad_output * s * (1 - s);
 	}
 
+	tensor Softmax::forward(const tensor& input)
+	{
+		this->input = input;
+		tensor exp_x = exp(input);
+		tensor sum_exp_x = exp_x.sum(0);
+		return exp_x.broadcast_div(sum_exp_x, 1);
+	}
+
 	void Sequential::add(Layer* layer)
 	{
 		std::cout << "Adding layer: " << std::endl;
@@ -97,14 +105,10 @@ namespace nn
 	{
 		for (Layer* layer : layers)
 		{
-			//std::cout << layer->params.size() << std::endl;
 			for (int i = 0; i < layer->params.size(); i++)
 			{
 				Shape param_shape = layer->params[i]->getShape();
 				Shape delta_shape = layer->deltas[i]->getShape();
-				//std::cout << param_shape << delta_shape << std::endl;
-				//std::cout << "Updating param " << i << std::endl;
-				//std::cout << "Before update: " << *(layer->params[i]) << std::endl;
 				*layer->params[i] -= *(layer->deltas[i]) * lr;
 				//std::cout << "After update: " << *(layer->params[i]) << std::endl;
 			}
@@ -132,18 +136,27 @@ namespace nn
 	float CrossEntropy::operator()(const tensor& x, const tensor& y)
 	{
 		assert(x.getShape() == y.getShape());
-		return 0;
+		tensor softmax_x = softmax(x);
+		//std::cout << "softmax_x: " << softmax_x << std::endl;
+		return (y * log(softmax(x) + 1e-8f) * -1).mean();
 	}
 
 	tensor CrossEntropy::backward(const tensor& x, const tensor& y)
 	{
 		assert(x.getShape() == y.getShape());
 		tensor pridict = softmax(x);
+		//std::cout << "pridict: " << pridict << std::endl;
 		return (pridict - y) / x.getShape().dims[0];
 	}
 
 	tensor CrossEntropy::softmax(const tensor& x)
 	{
-		return tensor();
+		//tensor max_x = x.max(1);
+		//std::cout << "sum_x: " << max_x << std::endl;
+		tensor exp_x = exp(x.broadcast_sub(x.max(1), 1));
+		tensor sum_exp_x = exp_x.sum(1);
+		//tensor sum_x = exp_x.sum(1);
+		//std::cout << "sum_exp_x: " << sum_x << std::endl;
+		return exp_x.broadcast_div(sum_exp_x + 1e-8f, 1);
 	}
 }

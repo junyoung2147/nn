@@ -34,7 +34,7 @@ namespace Tensor
 		void updateTensor(float(*func)(float, float), const tensor& a) const;
 		tensor operateBroadcast(tensor(*func)(const tensor&, const tensor&), const tensor& other, const unsigned int dim) const;
 		bool is_contiguous() const;
-		void get_multi_idx(std::vector<int>& multi_idx, unsigned int idx) const;
+		void get_multi_idx(std::vector<int>& multi_idx, unsigned int idx, int ignore_dim = -1) const;
 	public:
 		tensor();
 		tensor(Shape shape);
@@ -53,6 +53,8 @@ namespace Tensor
 		tensor sum(const unsigned int dim) const;
 		float sum() const;
 		float mean() const;
+		tensor max(const unsigned int dim) const;
+		tensor argmax(const unsigned int dim) const;
 		tensor slice(const unsigned int dim, const unsigned int start, const unsigned int end);
 		tensor broadcast_add(const tensor& other, const unsigned int dim) const;
 		tensor broadcast_sub(const tensor& other, const unsigned int dim) const;
@@ -80,6 +82,7 @@ namespace Tensor
 		tensor operator==(const float other) const;
 		friend std::ostream& operator<<(std::ostream& out, tensor& t);
 		friend tensor exp(const tensor& a);
+		friend tensor log(const tensor& a);
 		friend tensor max(const tensor& a, const tensor& b);
 		friend tensor min(const tensor& a, const tensor& b);
 		friend tensor max(const tensor& a, const float b);

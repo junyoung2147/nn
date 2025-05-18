@@ -58,41 +58,53 @@ int main(void)
 	model.add(new ReLU());
 	model.add(new Linear(128, 64));
 	model.add(new ReLU());
-	model.add(new Linear(64, 64));
-	model.add(new ReLU());
 	model.add(new Linear(64, 10));
 	//std::cout << *model.layers[0]->params[0] << std::endl;
 
 	std::cout << "Layers added to model" << std::endl;
 	MSE mse = MSE();
-	SGD sgd(model.layers,0.0005);
+	CrossEntropy cross_entropy = CrossEntropy();
+	SGD sgd(model.layers,0.01);
 	std::cout << "SGD optimizer created" << std::endl;
 	
-	tensor input = load_mnist_data("C:\\Users\\user\\Desktop\\train-images-idx3-ubyte\\train-images-idx3-ubyte", 8000);
-	tensor label = load_mnist_labels("C:\\Users\\user\\Desktop\\train-labels-idx1-ubyte\\train-labels-idx1-ubyte", 8000);
+	tensor input = load_mnist_data("C:\\Users\\user\\Desktop\\train-images-idx3-ubyte\\train-images-idx3-ubyte", 1000);
+	tensor label = load_mnist_labels("C:\\Users\\user\\Desktop\\train-labels-idx1-ubyte\\train-labels-idx1-ubyte", 1000);
 	tensor input_1 = label.slice(0, 0, 1);
 	std::cout << input_1 << std::endl;
 	tensor input_2 = label.slice(0, 10, 11);
 	std::cout << input_2 << std::endl;
 	
-	//DataLoader data_loader = DataLoader(input, label, 64);
-	//for (int i = 0; i < 10; i++)
-	//{
-	//	std::cout << "Epoch: " << i << std::endl;
-	//	while (data_loader.has_next())
-	//	{
-	//		std::pair<tensor, tensor> data = data_loader.get();
-	//		//std::cout << "Data: " << data.first << std::endl;
-	//		tensor output = model(data.first);
-	//		//std::cout << "Output: " << output << std::endl;
-	//		//float loss = mse(output, data.second);
-	//		tensor output_grad = mse.backward(output, data.second);
-	//		model.backward(output_grad);
-	//		sgd.step();
-	//		//std::cout << "Loss: " << mse(output, data.second) << std::endl;
-	//	}
-	//	data_loader.reset();
-	//}
+	int batch_size = 32;
+	DataLoader data_loader = DataLoader(input, label, batch_size);
+	
+	float sum_loss = 0;
+	int num_correct = 0;
+	for (int i = 0; i < 100; i++)
+	{
+		while (data_loader.has_next())
+		{
+			std::pair<tensor, tensor> data = data_loader.get();
+			//std::cout << "Data: " << data.first << std::endl;
+			tensor output = model(data.first);
+			float loss = cross_entropy(output, data.second);
+			sum_loss += loss;
+			tensor output_grad = cross_entropy.backward(output, data.second);
+			model.backward(output_grad);
+			sgd.step();
+			std::cout << "batch " << data_loader.get_index() / batch_size << "/" << data_loader.get_num_batchs() << " Loss: " << loss << std::endl;
+			tensor pred = output.argmax(1);
+			tensor label = data.second.argmax(1);
+			//std::cout << output << std::endl;
+			/*std::cout << "Pred: " << pred << std::endl;
+			std::cout << "Label: " << label << std::endl;*/
+			num_correct += (pred == label).sum();
+		}
+		data_loader.reset();
+		std::cout << "Epoch: " << i << ", average loss: " << sum_loss / data_loader.get_num_batchs();
+		std::cout << ", accuracy: " << (float)num_correct / data_loader.get_num_samples() << std::endl;
+		num_correct = 0;
+		sum_loss = 0;
+	}
 
 	//tensor test_out = model(input_1);
 	//std::cout << "Test output: " << test_out << std::endl;

@@ -154,10 +154,15 @@ namespace Tensor
 		return idx;
 	}
 
-	void tensor::get_multi_idx(std::vector<int>& multi_idx, unsigned int idx) const
+	void tensor::get_multi_idx(std::vector<int>& multi_idx, unsigned int idx, int ignore_dim) const
 	{
 		for (int i = shape.dimension() - 1; i >= 0; i--)
 		{
+			if (i == ignore_dim)
+			{
+				multi_idx[i] = 0;
+				continue;
+			}
 			multi_idx[i] = idx % shape.dims[i];
 			idx /= shape.dims[i];
 		}
@@ -607,7 +612,7 @@ namespace Tensor
 				std::vector<int> multi_idx(shape.dimension());
 				for (unsigned int idx = start; idx < end; idx++)
 				{
-					get_multi_idx(multi_idx, idx);
+					get_multi_idx(multi_idx, idx, dim);
 					
 					float sum = 0;
 					for (unsigned int j = 0; j < shape.dims[dim]; j ++)
@@ -664,6 +669,84 @@ namespace Tensor
 		}
 		for (auto& t : threads) t.join();
 		return result.load();
+	}
+
+	tensor tensor::max(const unsigned int dim) const
+	{
+		assert(shape.dimension() > dim);
+		Shape newShape = shape;
+		newShape.dims[dim] = 1;
+		unsigned int reduceSize = arraySize / shape.dims[dim];
+		unsigned int cores = std::min(getNumCores(), reduceSize);
+		unsigned int blockSize = reduceSize / cores;
+		unsigned int remainder = reduceSize % cores;
+		std::vector<std::thread> threads;
+		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(reduceSize);
+		unsigned int start = 0;
+		for (unsigned int i = 0; i < cores; i++)
+		{
+			unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
+			threads.emplace_back([start, end, dim, newArray, this] {
+				std::vector<int> multi_idx(shape.dimension());
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					get_multi_idx(multi_idx, idx, dim);
+					float maxValue = array[find_idx(multi_idx)];
+					for (unsigned int j = 0; j < shape.dims[dim]; j++)
+					{
+						multi_idx[dim] = j;
+						unsigned int flat_idx = find_idx(multi_idx);
+						maxValue = std::max(maxValue, array[flat_idx]);
+					}
+					newArray[idx] = maxValue;
+				}
+				});
+			start = end;
+		}
+		for (auto& t : threads) t.join();
+		return tensor(newShape, newArray);
+	}
+
+	tensor tensor::argmax(const unsigned int dim) const
+	{
+		assert(shape.dimension() > dim);
+		Shape newShape = shape;
+		newShape.dims[dim] = 1;
+		unsigned int reduceSize = arraySize / shape.dims[dim];
+		unsigned int cores = std::min(getNumCores(), reduceSize);
+		unsigned int blockSize = reduceSize / cores;
+		unsigned int remainder = reduceSize % cores;
+		std::vector<std::thread> threads;
+		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(reduceSize);
+		unsigned int start = 0;
+		for (unsigned int i = 0; i < cores; i++)
+		{
+			unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
+			threads.emplace_back([start, end, dim, newArray, this] {
+				std::vector<int> multi_idx(shape.dimension());
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					get_multi_idx(multi_idx, idx, dim);
+					float maxValue = array[find_idx(multi_idx)];
+					unsigned int maxIdx = 0;
+					for (unsigned int j = 0; j < shape.dims[dim]; j++)
+					{
+						multi_idx[dim] = j;
+						unsigned int flat_idx = find_idx(multi_idx);
+						if (maxValue < array[flat_idx])
+						{
+							maxIdx = j;
+							maxValue = array[flat_idx];
+						}
+					}
+					//std::cout << maxValue << std::endl;
+					newArray[idx] = (float)maxIdx;
+				}
+				});
+			start = end;
+		}
+		for (auto& t : threads) t.join();
+		return tensor(newShape, newArray);
 	}
 
 	float tensor::mean() const
@@ -738,18 +821,79 @@ namespace Tensor
 		std::vector<std::thread> threads;
 
 		unsigned int start = 0;
-
-		for (unsigned int i = 0; i < cores; i++)
+		if (a.is_contiguous())
 		{
-			unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-			threads.emplace_back([start, end, a, newArray] {
-				for (int idx = start; idx < end; idx++)
-				{
-					//std::cout << a.array[idx] << std::endl;
-					newArray[idx] = std::exp(a.array[idx]);
-				}
-				});
-			start = end;
+			for (unsigned int i = 0; i < cores; i++)
+			{
+				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
+				threads.emplace_back([start, end, a, newArray] {
+					for (int idx = start; idx < end; idx++)
+					{
+						newArray[idx] = std::exp(a.array[a.offset + idx]);
+					}
+					});
+				start = end;
+			}
+		}
+		else
+		{
+			for (unsigned int i = 0; i < cores; i++)
+			{
+				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
+				threads.emplace_back([start, end, a, newArray] {
+					std::vector<int> multi_idx(a.shape.dimension(), 0);
+					for (int idx = start; idx < end; idx++)
+					{
+						a.get_multi_idx(multi_idx, idx);
+						newArray[idx] = std::exp(a.array[a.find_idx(multi_idx)]);
+					}
+					});
+				start = end;
+			}
+		}
+		
+		for (auto& t : threads) t.join();
+		tensor t = tensor(a.shape, newArray);
+		return t;
+	}
+
+	tensor log(const tensor& a)
+	{
+		unsigned int cores = std::min(getNumCores(), (unsigned int)a.arraySize);
+		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(a.arraySize);
+		unsigned int blockSize = a.arraySize / cores;
+		unsigned int remainder = a.arraySize % cores;
+		std::vector<std::thread> threads;
+		unsigned int start = 0;
+		if (a.is_contiguous())
+		{
+			for (unsigned int i = 0; i < cores; i++)
+			{
+				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
+				threads.emplace_back([start, end, a, newArray] {
+					for (int idx = start; idx < end; idx++)
+					{
+						newArray[idx] = std::log(a.array[a.offset + idx]);
+					}
+					});
+				start = end;
+			}
+		}
+		else
+		{
+			for (unsigned int i = 0; i < cores; i++)
+			{
+				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
+				threads.emplace_back([start, end, a, newArray] {
+					std::vector<int> multi_idx(a.shape.dimension(), 0);
+					for (int idx = start; idx < end; idx++)
+					{
+						a.get_multi_idx(multi_idx, idx);
+						newArray[idx] = std::log(a.array[a.find_idx(multi_idx)]);
+					}
+					});
+				start = end;
+			}
 		}
 		for (auto& t : threads) t.join();
 		tensor t = tensor(a.shape, newArray);

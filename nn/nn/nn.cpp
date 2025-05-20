@@ -70,9 +70,9 @@ namespace nn
 	tensor Softmax::forward(const tensor& input)
 	{
 		this->input = input;
-		tensor exp_x = exp(input);
-		tensor sum_exp_x = exp_x.sum(0);
-		return exp_x.broadcast_div(sum_exp_x, 1);
+		tensor exp_x = exp(input.broadcast_sub(input.max(1), 1));
+		tensor sum_exp_x = exp_x.sum(1);
+		return exp_x.broadcast_div(sum_exp_x + 1e-8f, 1);
 	}
 
 	void Sequential::add(Layer* layer)

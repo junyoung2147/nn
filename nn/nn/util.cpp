@@ -10,7 +10,7 @@ namespace nn
 		assert(x.getShape().dims[0] == y.getShape().dims[0]);
 		this->batch_size = batch_size;
 		this->num_samples = x.getShape().dims[0];
-		this->num_batchs = num_samples / batch_size;
+		this->num_batchs = num_samples / batch_size + 1;
 	}
 
 	std::pair<tensor, tensor> DataLoader::get()

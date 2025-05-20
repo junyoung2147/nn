@@ -3,6 +3,7 @@
 #include"nn.h"
 #include"util.h"
 #include<memory>
+#include<ctime>
 
 using namespace nn;
 
@@ -69,18 +70,16 @@ int main(void)
 	
 	tensor input = load_mnist_data("C:\\Users\\user\\Desktop\\train-images-idx3-ubyte\\train-images-idx3-ubyte", 1000);
 	tensor label = load_mnist_labels("C:\\Users\\user\\Desktop\\train-labels-idx1-ubyte\\train-labels-idx1-ubyte", 1000);
-	tensor input_1 = label.slice(0, 0, 1);
-	std::cout << input_1 << std::endl;
-	tensor input_2 = label.slice(0, 10, 11);
-	std::cout << input_2 << std::endl;
 	
 	int batch_size = 32;
 	DataLoader data_loader = DataLoader(input, label, batch_size);
 	
 	float sum_loss = 0;
 	int num_correct = 0;
-	for (int i = 0; i < 100; i++)
+	time_t start_time = 0;
+	for (int i = 0; i < 30; i++)
 	{
+		start_time = clock();
 		while (data_loader.has_next())
 		{
 			std::pair<tensor, tensor> data = data_loader.get();
@@ -100,10 +99,32 @@ int main(void)
 			num_correct += (pred == label).sum();
 		}
 		data_loader.reset();
-		std::cout << "Epoch: " << i << ", average loss: " << sum_loss / data_loader.get_num_batchs();
-		std::cout << ", accuracy: " << (float)num_correct / data_loader.get_num_samples() << std::endl;
+		std::cout << "Epoch: " << i << " - " << (clock() - start_time) / 1000 << "s " << " - average loss: " << sum_loss / data_loader.get_num_batchs();
+		std::cout << " - accuracy: " << (float)num_correct / data_loader.get_num_samples() << std::endl;
 		num_correct = 0;
 		sum_loss = 0;
+	}
+
+	DataLoader test_data_loader = DataLoader(input, label, 1);
+	model.add(new Softmax());
+	for (int i = 0; i < 10; i++)
+	{
+		std::pair<tensor, tensor> data = test_data_loader.get();
+		tensor output = model(data.first);
+		int pred = output.argmax(1)(0,0);
+		int label = data.second.argmax(1)(0, 0);
+		for (int j = 0; j < 28; j++)
+		{
+			for (int k = 0; k < 28; k++)
+			{
+				int pixel = (int)(data.first(0, j * 28 + k) * 255) / 30;
+				if (pixel == 0) std::cout << ". ";
+				else std::cout << pixel << " ";
+			}
+			std::cout << std::endl;
+		}
+		std::cout << "Pred: " << pred << std::endl;
+		std::cout << "Label: " << label << std::endl;
 	}
 
 	//tensor test_out = model(input_1);

@@ -121,6 +121,6 @@ namespace nn
 		tensor input;
 	public:
 		virtual tensor forward(const tensor& input) override;
-		virtual tensor backward(const tensor& grad_output) override;
+		//virtual tensor backward(const tensor& grad_output) override;
 	};
 }

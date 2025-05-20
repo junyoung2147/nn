@@ -1,6 +1,5 @@
 #include "tensor.h"
 #include<assert.h>
-#include<thread>
 #include<cmath>
 #include<random>
 #include<atomic>
@@ -168,6 +167,16 @@ namespace Tensor
 		}
 	}
 
+	ParallelJopInfo tensor::prepareParallelJop(const unsigned int size) const
+	{
+		ParallelJopInfo info;
+		info.newArray = std::make_shared<float[]>(size);
+		info.numCores = getNumCores();
+		info.blockSize = size / info.numCores;
+		info.remainder = size % info.numCores;
+		return info;
+	}
+
 	tensor Tensor::initFillTensor(Shape shape, float value)
 	{
 		int arraySize = 1;
@@ -181,230 +190,136 @@ namespace Tensor
 		return *t;
 	}
 
-	tensor tensor::operateFloat(float(*func)(float, float), float value) const
+	tensor tensor::applyBinaryFloat(float(*func)(float, float), float value) const
 	{
-		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(arraySize);
-
-		unsigned int numCores = getNumCores();
-		size_t blockSize = arraySize / numCores;
-		unsigned int remainder = arraySize % numCores;
-
-		std::vector<std::thread> threads;
-		size_t start = 0;
-
 		if (is_contiguous())
 		{
-			for (unsigned int i = 0; i < numCores; i++)
-			{
-				//논리 코어 수로 나눈 나머지를 배분
-				size_t end = start + blockSize + (i < remainder ? 1 : 0);
-				//람다를 이용해 각 스레드에 start - end 범위의 작업을 맡김
-				threads.emplace_back([start, end, value, newArray, func, this] {
-					for (size_t idx = start; idx < end; idx++)
-					{
-						//인수로 받은 사칙연산 함수를 적용
-						newArray[idx] = func(array[offset + idx], value);
-					}
-					});
-				start = end;
-			}
+			return applyBinaryContig(func, [value](unsigned int) {return value; });
 		}
 		else
 		{
-			for (unsigned int i = 0; i < numCores; i++)
-			{
-				size_t end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, value, newArray, func, this] {
-					std::vector<int> multi_idx(shape.dimension(), 0);
-					for (size_t idx = start; idx < end; idx++)
-					{
-						get_multi_idx(multi_idx, idx);
-						newArray[idx] = func(array[find_idx(multi_idx)], value);
-					}
-					});
-				start = end;
-			}
+			return applyBinaryStrided(func, [value](std::vector<int>) {return value; });
 		}
-
-		for (auto& t : threads) t.join();
-
-		return tensor(shape, newArray);
 	}
 
 	tensor tensor::operator+(const float a) const
 	{
-		return operateFloat([](float a, float b) {return a + b; }, a);
+		return applyBinaryFloat([](float a, float b) {return a + b; }, a);
 	}
 
 	tensor tensor::operator-(const float a) const
 	{
-		return operateFloat([](float a, float b) {return a - b; }, a);
+		return applyBinaryFloat([](float a, float b) {return a - b; }, a);
 	}
 
 	tensor operator-(const float a, const tensor& b)
 	{
-		return b.operateFloat([](float a, float b) {return b - a; }, a);
+		return b.applyBinaryFloat([](float a, float b) {return b - a; }, a);
 	}
 
 	tensor tensor::operator*(const float a) const
 	{
-		return operateFloat([](float a, float b) {return a * b; }, a);
+		return applyBinaryFloat([](float a, float b) {return a * b; }, a);
 	}
 
 	tensor tensor::operator/(const float a) const
 	{
-		return operateFloat([](float a, float b) {return a / b; }, a);
+		return applyBinaryFloat([](float a, float b) {return a / b; }, a);
 	}
 
 	tensor operator/(const float a, const tensor& b)
 	{
-		return b.operateFloat([](float a, float b) {return b / a; }, a);
+		return b.applyBinaryFloat([](float a, float b) {return b / a; }, a);
 	}
 
-	tensor tensor::operateTensor(float(*func)(float, float), const tensor& a) const
+	tensor tensor::applyBinaryTensor(float(*func)(float, float), const tensor& a) const
 	{
 		assert(this->shape == a.shape);
-		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(arraySize);
-
-		unsigned int numCores = getNumCores();
-		size_t blockSize = arraySize / numCores;
-		unsigned int remainder = arraySize % numCores;
-
-		std::vector<std::thread> threads;
-		size_t start = 0;
-
+	
 		if (is_contiguous() && a.is_contiguous())
 		{
-			for (unsigned int i = 0; i < numCores; i++)
-			{
-				//논리 코어 수로 나눈 나머지를 배분
-				size_t end = start + blockSize + (i < remainder ? 1 : 0);
-				//람다를 이용해 각 스레드에 start - end 범위의 작업을 맡김
-				threads.emplace_back([start, end, a, newArray, func, this] {
-					for (size_t idx = start; idx < end; idx++)
-					{
-						//인수로 받은 사칙연산 함수를 적용
-						newArray[idx] = func(array[offset + idx], a.array[a.offset + idx]);
-					}
-					});
-				start = end;
-			}
+			return applyBinaryContig(func, [a](unsigned int idx) {return a.array[a.offset + idx]; });
 		}
 		else
 		{
-			for (unsigned int i = 0; i < numCores; i++)
-			{
-				size_t end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, newArray, func, this] {
-					std::vector<int> multi_idx(shape.dimension(), 0);
-					for (size_t idx = start; idx < end; idx++)
-					{
-						get_multi_idx(multi_idx, idx);
-						newArray[idx] = func(array[find_idx(multi_idx)], a.array[a.find_idx(multi_idx)]);
-					}
-					});
-				start = end;
-			}
+			return applyBinaryStrided(func, [a](std::vector<int> multi_idx) {return a.array[a.find_idx(multi_idx)]; });
 		}
-
-		for (auto& t : threads) t.join();
-
-		return tensor(shape, newArray);
 	}
 
 	tensor tensor::operator+(const tensor& a) const
 	{
-		return operateTensor([](float a, float b) {return a + b; }, a);
+		return applyBinaryTensor([](float a, float b) {return a + b; }, a);
 	}
 
 	tensor tensor::operator-(const tensor& a) const
 	{
-		return operateTensor([](float a, float b) {return a - b; }, a);
+		return applyBinaryTensor([](float a, float b) {return a - b; }, a);
 	}
 
 	tensor tensor::operator*(const tensor& a) const
 	{
-		return operateTensor([](float a, float b) {return a * b; }, a);
+		return applyBinaryTensor([](float a, float b) {return a * b; }, a);
 	}
 
 	tensor tensor::operator/(const tensor& a) const
 	{
-		return operateTensor([](float a, float b) {return a / b; }, a);
+		return applyBinaryTensor([](float a, float b) {return a / b; }, a);
 	}
 
 	tensor tensor::operator<(const tensor& other) const
 	{
-		return operateTensor([](float a, float b)->float {return a < b; }, other);
+		return applyBinaryTensor([](float a, float b)->float {return a < b; }, other);
 	}
 
 	tensor tensor::operator>(const tensor& other) const
 	{
-		return operateTensor([](float a, float b)->float {return a > b; }, other);
+		return applyBinaryTensor([](float a, float b)->float {return a > b; }, other);
 	}
 
 	tensor tensor::operator==(const tensor& other) const
 	{
-		return operateTensor([](float a, float b)->float {return a == b; }, other);
+		return applyBinaryTensor([](float a, float b)->float {return a == b; }, other);
 	}
 
 	tensor tensor::operator<(const float other) const
 	{
-		return operateFloat([](float a, float b)->float {return a < b; }, other);
+		return applyBinaryFloat([](float a, float b)->float {return a < b; }, other);
 	}
 
 	tensor tensor::operator>(const float other) const
 	{
-		return operateFloat([](float a, float b)->float {return a > b; }, other);
+		return applyBinaryFloat([](float a, float b)->float {return a > b; }, other);
 	}
 
 	tensor tensor::operator==(const float other) const
 	{
-		return operateFloat([](float a, float b)->float {return a == b; }, other);
+		return applyBinaryFloat([](float a, float b)->float {return a == b; }, other);
 	}
 
 	void tensor::updateTensor(float(*func)(float, float), const tensor& a) const
 	{
 		assert(this->shape == a.shape);
-		unsigned int numCores = std::min(getNumCores(), (unsigned int)arraySize);
-		unsigned int blockSize = arraySize / numCores;
-		unsigned int remainder = arraySize % numCores;
-
-		std::vector<std::thread> threads;
-		unsigned int start = 0;
-
+		
 		if (is_contiguous() && a.is_contiguous())
 		{
-			//std::cout << "contiguous" << std::endl;
-			for (unsigned short i = 0; i < numCores; i++)
-			{
-				size_t end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, func, this] {
-					for (unsigned int idx = start; idx < end; idx++)
-					{
-						this->array[offset + idx] = func(array[offset + idx], a.array[a.offset + idx]);
-					}
-					});
-				start = end;
-			}
+			TensorThreadPool::getInstance().run(arraySize, [a, func, this](int start, int end) {
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					this->array[offset + idx] = func(array[offset + idx], a.array[a.offset + idx]);
+				}
+				});
 		}
 		else
 		{
-			for (unsigned short i = 0; i < numCores; i++)
-			{
-				size_t end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, func, this] {
-					std::vector<int> multi_idx(shape.dimension(), 0);
-					for (unsigned int idx = start; idx < end; idx++)
-					{
-						get_multi_idx(multi_idx, idx);
-						this->array[offset + idx] = func(array[find_idx(multi_idx)], a.array[a.find_idx(multi_idx)]);
-					}
-					});
-				start = end;
-			}
+			TensorThreadPool::getInstance().run(arraySize, [a, func, this](int start, int end) {
+				std::vector<int> multi_idx(shape.dimension(), 0);
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					get_multi_idx(multi_idx, idx);
+					this->array[offset + idx] = func(array[find_idx(multi_idx)], a.array[a.find_idx(multi_idx)]);
+				}
+				});
 		}
-
-		for (auto& t : threads) t.join();
 	}
 
 	tensor& tensor::operator+=(const tensor& a)
@@ -423,45 +338,26 @@ namespace Tensor
 
 	void tensor::updateFloat(float(*func)(float, float), const float a) const
 	{
-		unsigned int numCores = std::min(getNumCores(), (unsigned int)arraySize);
-		unsigned int blockSize = arraySize / numCores;
-		unsigned int remainder = arraySize % numCores;
-
-		std::vector<std::thread> threads;
-		unsigned int start = 0;
-
 		if (is_contiguous())
 		{
-			for (unsigned short i = 0; i < numCores; i++)
-			{
-				size_t end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, func, this] {
-					for (unsigned int idx = start; idx < end; idx++)
-					{
-						this->array[offset + idx] = func(array[offset + idx], a);
-					}
-					});
-				start = end;
-			}
+			TensorThreadPool::getInstance().run(arraySize, [a, func, this](int start, int end) {
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					this->array[offset + idx] = func(array[offset + idx], a);
+				}
+				});
 		}
 		else
 		{
-			for (unsigned short i = 0; i < numCores; i++)
-			{
-				size_t end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, func, this] {
-					std::vector<int> multi_idx(shape.dimension(), 0);
-					for (unsigned int idx = start; idx < end; idx++)
-					{
-						get_multi_idx(multi_idx, idx);
-						this->array[offset + idx] = func(array[find_idx(multi_idx)], a);
-					}
-					});
-				start = end;
-			}
+			TensorThreadPool::getInstance().run(arraySize, [a, func, this](int start, int end) {
+				std::vector<int> multi_idx(shape.dimension(), 0);
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					get_multi_idx(multi_idx, idx);
+					this->array[offset + idx] = func(array[find_idx(multi_idx)], a);
+				}
+				});
 		}
-
-		for (auto& t : threads) t.join();
 	}
 
 	tensor& tensor::operator+=(const float a)
@@ -476,7 +372,7 @@ namespace Tensor
 		return *this;
 	}
 
-	tensor tensor::operateBroadcast(tensor(*func)(const tensor&, const tensor&), const tensor& a, const unsigned int dim) const
+	tensor tensor::applyBroadcast(tensor(*func)(const tensor&, const tensor&), const tensor& a, const unsigned int dim) const
 	{
 		assert(shape.dimension() == a.shape.dimension());
 		assert(a.shape.dims[dim] == 1);
@@ -488,28 +384,28 @@ namespace Tensor
 
 	tensor tensor::broadcast_add(const tensor& a, const unsigned int dim) const
 	{
-		return operateBroadcast([](const tensor& a, const tensor& b) {
+		return applyBroadcast([](const tensor& a, const tensor& b) {
 			return a + b;
 			}, a, dim);
 	}
 
 	tensor tensor::broadcast_sub(const tensor& a, const unsigned int dim) const
 	{
-		return operateBroadcast([](const tensor& a, const tensor& b) {
+		return applyBroadcast([](const tensor& a, const tensor& b) {
 			return a - b;
 			}, a, dim);
 	}
 
 	tensor tensor::broadcast_mul(const tensor& a, const unsigned int dim) const
 	{
-		return operateBroadcast([](const tensor& a, const tensor& b) {
+		return applyBroadcast([](const tensor& a, const tensor& b) {
 			return a * b;
 			}, a, dim);
 	}
 
 	tensor tensor::broadcast_div(const tensor& a, const unsigned int dim) const
 	{
-		return operateBroadcast([](const tensor& a, const tensor& b) {
+		return applyBroadcast([](const tensor& a, const tensor& b) {
 			return a / b;
 			}, a, dim);
 	}
@@ -532,35 +428,23 @@ namespace Tensor
 		unsigned int totalRows = arraySize / cPart;
 		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(totalRows * cols);
 
-		unsigned int cores = std::min(getNumCores(), totalRows);
-		//std::cout << cores;
-		std::vector<std::thread> threads;
-		unsigned int blocks = totalRows / cores;
-		unsigned int remainder = totalRows % cores;
-		unsigned int start = 0;
-
-		for (unsigned int t = 0; t < cores; ++t) {
-			unsigned int end = start + blocks + (t < remainder ? 1 : 0);
-			threads.emplace_back([start, end, rows, cols, cPart, m1_d, this, newArray, &a]() {
-				for (unsigned int idx = start; idx < end; ++idx) {
-					//현재 idx 이전의 행렬 수
-					unsigned int batch = idx / rows;
-					//현재 행
-					unsigned int i = idx % rows;
-					for (unsigned int j = 0; j < cols; ++j) {
-						float sum = 0;
-						for (unsigned int k = 0; k < cPart; ++k) {
-							//오프셋 + 행렬 크기(행 x 열) * 현재 idx 이전의 행렬 개수 + 행 * 전체 열 + 열 로 인덱스 계산
-							sum += array[offset + batch * rows * cPart + i * stride[m1_d - 2] + k * stride[m1_d - 1]] *
-								a.array[a.offset + batch * cPart * cols + k * a.stride[m1_d - 2] + j * a.stride[m1_d - 1]];
-						}
-						newArray[batch * rows * cols + i * cols + j] = sum;
+		TensorThreadPool::getInstance().run(totalRows, [rows, cols, cPart, m1_d, this, newArray, &a](int start, int end) {
+			for (unsigned int idx = start; idx < end; ++idx) {
+				//현재 idx 이전의 행렬 수
+				unsigned int batch = idx / rows;
+				//현재 행
+				unsigned int i = idx % rows;
+				for (unsigned int j = 0; j < cols; ++j) {
+					float sum = 0;
+					for (unsigned int k = 0; k < cPart; ++k) {
+						//오프셋 + 행렬 크기(행 x 열) * 현재 idx 이전의 행렬 개수 + 행 * 전체 열 + 열 로 인덱스 계산
+						sum += array[offset + batch * rows * cPart + i * stride[m1_d - 2] + k * stride[m1_d - 1]] *
+							a.array[a.offset + batch * cPart * cols + k * a.stride[m1_d - 2] + j * a.stride[m1_d - 1]];
 					}
+					newArray[batch * rows * cols + i * cols + j] = sum;
 				}
-				});
-			start = end;
-		}
-		for (auto& t : threads) t.join();
+			}
+			});
 
 		std::vector<unsigned int> shapeArray(shape.dims);
 		shapeArray[m1_d - 1] = cols;
@@ -592,161 +476,98 @@ namespace Tensor
 		return result;
 	}
 
-	tensor tensor::sum(const unsigned int dim) const
+	tensor tensor::applyReduction(std::function<void(std::shared_ptr<float[]>, std::vector<int>&, unsigned int idx)> func, const unsigned int dim) const
 	{
 		assert(shape.dimension() > dim);
 		Shape newShape = shape;
 		newShape.dims[dim] = 1;
 
 		unsigned int reduceSize = arraySize / shape.dims[dim];
-		unsigned int cores = std::min(getNumCores(), reduceSize);
-		unsigned int blockSize = reduceSize / cores;
-		unsigned int remainder = reduceSize % cores;
-		std::vector<std::thread> threads;
 		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(reduceSize);
-		unsigned int start = 0;
-		for (unsigned int i = 0; i < cores; i++)
-		{
-			unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-			threads.emplace_back([start, end, dim, newArray, this] {
-				std::vector<int> multi_idx(shape.dimension());
-				for (unsigned int idx = start; idx < end; idx++)
-				{
-					get_multi_idx(multi_idx, idx, dim);
-					
-					float sum = 0;
-					for (unsigned int j = 0; j < shape.dims[dim]; j ++)
-					{
-						multi_idx[dim] = j;
-						unsigned int flat_idx = find_idx(multi_idx);
-						sum += array[flat_idx];
-					}
-					newArray[idx] = sum;
-				}
-				});
-			start = end;
-		}
-		for (auto& t : threads) t.join();
+
+		TensorThreadPool::getInstance().run(reduceSize, [dim, this, func, newArray](int start, int end) {
+			std::vector<int> multi_idx(shape.dimension());
+			for (unsigned int idx = start; idx < end; idx++)
+			{
+				get_multi_idx(multi_idx, idx, dim);
+				func(newArray, multi_idx, idx);
+			}
+			});
 		return tensor(newShape, newArray);
+	}
+
+	tensor tensor::sum(const unsigned int dim) const
+	{
+		return applyReduction([this, dim](std::shared_ptr<float[]> newArray, std::vector<int>& multi_idx, unsigned int idx) {
+			float sum = 0;
+			for (unsigned int j = 0; j < shape.dims[dim]; j++)
+			{
+				multi_idx[dim] = j;
+				unsigned int flat_idx = find_idx(multi_idx);
+				sum += array[flat_idx];
+			}
+			newArray[idx] = sum;
+			}, dim);
 	}
 
 	float tensor::sum() const
 	{
-		unsigned int cores = std::min(getNumCores(), (unsigned int)arraySize);
-		unsigned int blockSize = arraySize / cores;
-		unsigned int remainder = arraySize % cores;
-		std::vector<std::thread> threads;
 		std::atomic<float> result(0.0f);
 		if (is_contiguous())
 		{
-			for (int i = 0; i < cores; i++)
-			{
-				unsigned int start = i * blockSize;
-				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, &result, this] {
-					for (unsigned int idx = start; idx < end; idx++)
-					{
-						result += array[offset + idx];
-					}
-					});
-			}
+			TensorThreadPool::getInstance().run(arraySize, [&result, this](int start, int end) {
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					result += array[offset + idx];
+				}
+				});
 		}
 		else
 		{
-			for (int i = 0; i < cores; i++)
-			{
-				unsigned int start = i * blockSize;
-				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, &result, this] {
-					std::vector<int> multi_idx(shape.dimension(), 0);
-					for (unsigned int idx = start; idx < end; idx++)
-					{
-						get_multi_idx(multi_idx, idx);
-						result += array[find_idx(multi_idx)];
-					}
-					});
-			}
+			TensorThreadPool::getInstance().run(arraySize, [&result, this](int start, int end) {
+				std::vector<int> multi_idx(shape.dimension(), 0);
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					get_multi_idx(multi_idx, idx);
+					result += array[find_idx(multi_idx)];
+				}
+				});
 		}
-		for (auto& t : threads) t.join();
 		return result.load();
 	}
 
 	tensor tensor::max(const unsigned int dim) const
 	{
-		assert(shape.dimension() > dim);
-		Shape newShape = shape;
-		newShape.dims[dim] = 1;
-		unsigned int reduceSize = arraySize / shape.dims[dim];
-		unsigned int cores = std::min(getNumCores(), reduceSize);
-		unsigned int blockSize = reduceSize / cores;
-		unsigned int remainder = reduceSize % cores;
-		std::vector<std::thread> threads;
-		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(reduceSize);
-		unsigned int start = 0;
-		for (unsigned int i = 0; i < cores; i++)
-		{
-			unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-			threads.emplace_back([start, end, dim, newArray, this] {
-				std::vector<int> multi_idx(shape.dimension());
-				for (unsigned int idx = start; idx < end; idx++)
-				{
-					get_multi_idx(multi_idx, idx, dim);
-					float maxValue = array[find_idx(multi_idx)];
-					for (unsigned int j = 0; j < shape.dims[dim]; j++)
-					{
-						multi_idx[dim] = j;
-						unsigned int flat_idx = find_idx(multi_idx);
-						maxValue = std::max(maxValue, array[flat_idx]);
-					}
-					newArray[idx] = maxValue;
-				}
-				});
-			start = end;
-		}
-		for (auto& t : threads) t.join();
-		return tensor(newShape, newArray);
+		return applyReduction([this, dim](std::shared_ptr<float[]> newArray, std::vector<int>& multi_idx, unsigned int idx) {
+			float maxValue = array[find_idx(multi_idx)];
+			for (unsigned int j = 0; j < shape.dims[dim]; j++)
+			{
+				multi_idx[dim] = j;
+				unsigned int flat_idx = find_idx(multi_idx);
+				maxValue = std::max(maxValue, array[flat_idx]);
+			}
+			newArray[idx] = maxValue;
+			}, dim);
 	}
 
 	tensor tensor::argmax(const unsigned int dim) const
 	{
-		assert(shape.dimension() > dim);
-		Shape newShape = shape;
-		newShape.dims[dim] = 1;
-		unsigned int reduceSize = arraySize / shape.dims[dim];
-		unsigned int cores = std::min(getNumCores(), reduceSize);
-		unsigned int blockSize = reduceSize / cores;
-		unsigned int remainder = reduceSize % cores;
-		std::vector<std::thread> threads;
-		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(reduceSize);
-		unsigned int start = 0;
-		for (unsigned int i = 0; i < cores; i++)
-		{
-			unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-			threads.emplace_back([start, end, dim, newArray, this] {
-				std::vector<int> multi_idx(shape.dimension());
-				for (unsigned int idx = start; idx < end; idx++)
+		return applyReduction([this, dim](std::shared_ptr<float[]> newArray, std::vector<int>& multi_idx, unsigned int idx) {
+			float maxValue = array[find_idx(multi_idx)];
+			unsigned int maxIdx = 0;
+			for (unsigned int j = 0; j < shape.dims[dim]; j++)
+			{
+				multi_idx[dim] = j;
+				unsigned int flat_idx = find_idx(multi_idx);
+				if (maxValue < array[flat_idx])
 				{
-					get_multi_idx(multi_idx, idx, dim);
-					float maxValue = array[find_idx(multi_idx)];
-					unsigned int maxIdx = 0;
-					for (unsigned int j = 0; j < shape.dims[dim]; j++)
-					{
-						multi_idx[dim] = j;
-						unsigned int flat_idx = find_idx(multi_idx);
-						if (maxValue < array[flat_idx])
-						{
-							maxIdx = j;
-							maxValue = array[flat_idx];
-						}
-					}
-					//std::cout << maxValue << std::endl;
-					newArray[idx] = (float)maxIdx;
+					maxIdx = j;
+					maxValue = array[flat_idx];
 				}
-				});
-			start = end;
-		}
-		for (auto& t : threads) t.join();
-		return tensor(newShape, newArray);
+			}
+			//std::cout << maxValue << std::endl;
+			newArray[idx] = (float)maxIdx;
+			},dim);
 	}
 
 	float tensor::mean() const
@@ -810,120 +631,71 @@ namespace Tensor
 		}
 	}
 
-	tensor exp(const tensor& a)
+	tensor tensor::applyUnary(float(*func)(float)) const
 	{
-		//std::cout << "exp" << std::endl;
-		unsigned int cores = std::min(getNumCores(), (unsigned int)a.arraySize);
-		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(a.arraySize);
-		unsigned int blockSize = a.arraySize / cores;
-		unsigned int remainder = a.arraySize % cores;
-
-		std::vector<std::thread> threads;
-
-		unsigned int start = 0;
-		if (a.is_contiguous())
+		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(arraySize);
+		if (is_contiguous())
 		{
-			for (unsigned int i = 0; i < cores; i++)
-			{
-				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, newArray] {
-					for (int idx = start; idx < end; idx++)
-					{
-						newArray[idx] = std::exp(a.array[a.offset + idx]);
-					}
-					});
-				start = end;
-			}
+			TensorThreadPool::getInstance().run(arraySize, [this, func, newArray](int start, int end) {
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					newArray[idx] = func(array[offset + idx]);
+				}
+				});
 		}
 		else
 		{
-			for (unsigned int i = 0; i < cores; i++)
-			{
-				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, newArray] {
-					std::vector<int> multi_idx(a.shape.dimension(), 0);
-					for (int idx = start; idx < end; idx++)
-					{
-						a.get_multi_idx(multi_idx, idx);
-						newArray[idx] = std::exp(a.array[a.find_idx(multi_idx)]);
-					}
-					});
-				start = end;
-			}
+			TensorThreadPool::getInstance().run(arraySize, [this, func, newArray](int start, int end) {
+				std::vector<int> multi_idx(shape.dimension(), 0);
+				for (unsigned int idx = start; idx < end; idx++)
+				{
+					get_multi_idx(multi_idx, idx);
+					newArray[idx] = func(array[find_idx(multi_idx)]);
+				}
+				});
 		}
-		
-		for (auto& t : threads) t.join();
-		tensor t = tensor(a.shape, newArray);
-		return t;
+		return tensor(shape, newArray);
+	}
+
+	tensor exp(const tensor& a)
+	{
+		//std::cout << "exp" << std::endl;
+		return a.applyUnary([](float a) {
+			return std::exp(a);
+			});
 	}
 
 	tensor log(const tensor& a)
 	{
-		unsigned int cores = std::min(getNumCores(), (unsigned int)a.arraySize);
-		std::shared_ptr<float[]> newArray = std::make_shared<float[]>(a.arraySize);
-		unsigned int blockSize = a.arraySize / cores;
-		unsigned int remainder = a.arraySize % cores;
-		std::vector<std::thread> threads;
-		unsigned int start = 0;
-		if (a.is_contiguous())
-		{
-			for (unsigned int i = 0; i < cores; i++)
-			{
-				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, newArray] {
-					for (int idx = start; idx < end; idx++)
-					{
-						newArray[idx] = std::log(a.array[a.offset + idx]);
-					}
-					});
-				start = end;
-			}
-		}
-		else
-		{
-			for (unsigned int i = 0; i < cores; i++)
-			{
-				unsigned int end = start + blockSize + (i < remainder ? 1 : 0);
-				threads.emplace_back([start, end, a, newArray] {
-					std::vector<int> multi_idx(a.shape.dimension(), 0);
-					for (int idx = start; idx < end; idx++)
-					{
-						a.get_multi_idx(multi_idx, idx);
-						newArray[idx] = std::log(a.array[a.find_idx(multi_idx)]);
-					}
-					});
-				start = end;
-			}
-		}
-		for (auto& t : threads) t.join();
-		tensor t = tensor(a.shape, newArray);
-		return t;
+		return a.applyUnary([](float a) {
+			return std::log(a);
+			});
 	}
 
 	tensor max(const tensor& a, const tensor& b)
 	{
-		return a.operateTensor([](float a, float b) {
+		return a.applyBinaryTensor([](float a, float b) {
 			return a > b ? a : b;
 			}, b);
 	}
 
 	tensor min(const tensor& a, const tensor& b)
 	{
-		return a.operateTensor([](float a, float b) {
+		return a.applyBinaryTensor([](float a, float b) {
 			return a < b ? a : b;
 			}, b);
 	}
 
 	tensor max(const tensor& a, const float b)
 	{
-		return a.operateFloat([](float a, float b) {
+		return a.applyBinaryFloat([](float a, float b) {
 			return a > b ? a : b;
 			}, b);
 	}
 
 	tensor min(const tensor& a, const float b)
 	{
-		return a.operateFloat([](float a, float b) {
+		return a.applyBinaryFloat([](float a, float b) {
 			return a < b ? a : b;
 			}, b);
 	}
@@ -949,5 +721,74 @@ namespace Tensor
 			array[i] = uniformRandom(min, max);
 		}
 		return tensor(shape, array);
+	}
+
+	void TensorThreadPool::run(int totalWork, std::function<void(int, int)> task)
+	{
+		{
+			std::unique_lock<std::mutex> lock(mtx);
+			this->totalWork = totalWork;
+			this->currentTask = task;
+			this->activeThreads = numThreads;
+			this->run_flag = true;
+			for (int i = 0; i < numThreads; ++i)
+			{
+				isActive[i] = true;
+			}
+		}
+		cv_start.notify_all();
+
+		std::unique_lock<std::mutex> lock(mtx);
+		cv_done.wait(lock, [this] { return activeThreads == 0; });
+		//std::cout << "all done" << std::endl;
+	}
+
+	void TensorThreadPool::workerThread(int threadId)
+	{
+		/*std::unique_lock<std::mutex> lock(mtx);
+		std::cout << threadId << " thread start" << std::endl;
+		lock.unlock();*/
+		while (true)
+		{
+			std::unique_lock<std::mutex> lock(mtx);
+			cv_start.wait(lock, [this, threadId] { return stop_flag || (run_flag && isActive[threadId]); });
+			if (stop_flag) return;
+			int blockSize = (totalWork + numThreads - 1) / numThreads;
+			int start = threadId * blockSize;
+			int end = std::min(start + blockSize, totalWork);
+			lock.unlock();
+
+			if (start < totalWork)
+			{
+				currentTask(start, end);
+			}
+			lock.lock();
+			isActive[threadId] = false;
+			if (--activeThreads == 0)
+			{
+				run_flag = false;
+				cv_done.notify_one();
+			}
+		}
+	}
+
+	TensorThreadPool::TensorThreadPool(int numThreads) : numThreads(numThreads), run_flag(false), stop_flag(false), activeThreads(0), totalWork(0)
+	{
+		isActive = std::vector(numThreads, false);
+		for (int i = 0; i < numThreads; ++i)
+		{
+			threads.emplace_back(&TensorThreadPool::workerThread, this, i);
+		}
+	}
+
+	TensorThreadPool::~TensorThreadPool()
+	{
+		stop_flag = true;
+		run_flag = true;
+		cv_start.notify_all();
+		for (auto& thread : threads)
+		{
+			if (thread.joinable()) thread.join();
+		}
 	}
 }

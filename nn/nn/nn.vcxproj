@@ -133,6 +133,7 @@
     <ClCompile Include="tensor.cpp" />
     <ClCompile Include="dotTest.cpp" />
     <ClCompile Include="tensorTest.cpp" />
+    <ClCompile Include="ThreadPoolTest.cpp" />
     <ClCompile Include="util.cpp" />
   </ItemGroup>
   <ItemGroup>

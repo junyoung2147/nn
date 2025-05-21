@@ -17,24 +17,23 @@ namespace nn
 		virtual void update(const float lr) {};
 	};
 
-	class Sequential
+	class Model
+	{
+	public:
+		virtual tensor operator()(tensor input) = 0;
+		virtual tensor backward(tensor grad_output) = 0;
+	private:
+	};
+
+	class Sequential : public Model
 	{
 	public:
 		std::vector<Layer*> layers;
 		Sequential() {  };
 		Sequential(std::vector<Layer*> layers) : layers(layers) {};
 		void add(Layer* layer);
-		tensor operator()(tensor input);
-		tensor backward(tensor grad_output);
-	};
-
-	class Model
-	{
-	public:
-		virtual void forward(tensor input) {};
-		virtual void backword(tensor grad_output) {};
-	private:
-		Model();
+		tensor operator()(tensor input) override;
+		tensor backward(tensor grad_output) override;
 	};
 
 	class Optimizer
@@ -52,6 +51,31 @@ namespace nn
 		float lr;
 	public:
 		SGD(std::vector<Layer*> layers, float lr = 0.001) : layers(layers), lr(lr) {};
+		virtual void step() override;
+	};
+
+	class Momentum : public Optimizer
+	{
+	private:
+		std::vector<Layer*> layers;
+		std::vector<std::vector<tensor>> velocity;
+		float lr;
+		float beta;
+	public:
+		Momentum(std::vector<Layer*> layers, float lr = 0.001, float beta = 0.9) : layers(layers), lr(lr), beta(beta)
+		{
+			velocity.reserve(layers.size());
+			for (int i = 0; i < layers.size(); i++)
+			{
+				int layer_size = layers[i]->params.size();
+				//std::cout << layer_size << std::endl;
+				velocity.push_back(std::vector<tensor>(layer_size));
+				for (int j = 0; j < layer_size; j++)
+				{
+					velocity[i][j] = tensor(layers[i]->params[j]->getShape());
+				}
+			}
+		};
 		virtual void step() override;
 	};
 
@@ -90,7 +114,7 @@ namespace nn
 		tensor input;
 		tensor output;
 	public:
-		Linear(unsigned int in_dim, unsigned int out_dim);
+		Linear(unsigned int in_dim, unsigned int out_dim, std::string init = "He");
 		virtual tensor forward(const tensor& input) override;
 		virtual tensor backward(const tensor& grad_output) override;
 	};

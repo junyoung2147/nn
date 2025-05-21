@@ -3,10 +3,41 @@
 
 namespace nn
 {
-	Linear::Linear(unsigned int in_dim, unsigned int out_dim)
+	Linear::Linear(unsigned int in_dim, unsigned int out_dim, std::string init)
 	{
-		w = initUniformTensor(Shape({in_dim, out_dim}), -0.1, 0.1);
-		b = initUniformTensor(Shape({ 1, out_dim }), -0.1, 0.1);
+		if (init == "Uniform")
+		{
+			w = initUniform(Shape({ in_dim, out_dim }), -0.1, 0.1);
+			b = initUniform(Shape({ 1, out_dim }), -0.1, 0.1);
+		}
+		else if (init == "Normal")
+		{
+			w = initNormal(Shape({ in_dim, out_dim }), 0, 0.01);
+			b = initNormal(Shape({ 1, out_dim }), 0, 0.01);
+		}
+		else if (init == "Xavier")
+		{
+			w = initXavier_normal(Shape({ in_dim, out_dim }), in_dim, out_dim);
+			b = initXavier_normal(Shape({ 1, out_dim }), in_dim, out_dim);
+		}
+		else if (init == "Xavier_uniform")
+		{
+			w = initXavier_uniform(Shape({ in_dim, out_dim }), in_dim, out_dim);
+			b = initXavier_uniform(Shape({ 1, out_dim }), in_dim, out_dim);
+		}
+		else if (init == "He_uniform")
+		{
+			w = initHe_uniform(Shape({ in_dim, out_dim }), in_dim);
+			b = initHe_uniform(Shape({ 1, out_dim }), in_dim);
+		}
+		else if (init == "He")
+		{
+			w = initHe_normal(Shape({ in_dim, out_dim }), in_dim);
+			b = initHe_normal(Shape({ 1, out_dim }), in_dim);
+		}
+		else
+			assert(false && "Unknown initialization method");
+
 		Shape s = w.getShape();
 		std::cout << s << std::endl;
 		params.push_back(&w);
@@ -109,9 +140,33 @@ namespace nn
 			{
 				Shape param_shape = layer->params[i]->getShape();
 				Shape delta_shape = layer->deltas[i]->getShape();
+				assert(param_shape == delta_shape);
 				*layer->params[i] -= *(layer->deltas[i]) * lr;
 				//std::cout << "After update: " << *(layer->params[i]) << std::endl;
 			}
+		}
+	}
+
+	void Momentum::step()
+	{
+		int i = 0;
+		for (Layer* layer : layers)
+		{
+			for (int j = 0; j < layer->params.size(); j++)
+			{
+				//std::cout << j <<" " << i << std::endl;
+				Shape param_shape = layer->params[j]->getShape();
+				Shape delta_shape = layer->deltas[j]->getShape();
+				Shape velocity_shape = velocity[i][j].getShape();
+				//std::cout << "velocity shape: " << velocity_shape << std::endl;
+				//std::cout << "param shape: " << param_shape << std::endl;
+				assert(delta_shape == velocity_shape);
+				assert(param_shape == delta_shape);
+				//std::cout << "Before update: " << std::endl;
+				velocity[i][j] = velocity[i][j] * beta + *(layer->deltas[j]) * lr;
+				*layer->params[j] -= velocity[i][j];
+			}
+			i++;
 		}
 	}
 

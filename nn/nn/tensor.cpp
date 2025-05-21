@@ -177,19 +177,6 @@ namespace Tensor
 		return info;
 	}
 
-	tensor Tensor::initFillTensor(Shape shape, float value)
-	{
-		int arraySize = 1;
-		for (int i = 0; i < shape.dimension(); i++)
-		{
-			arraySize *= shape.dims[i];
-		}
-		std::shared_ptr<float[]> array = std::make_shared<float[]>(arraySize);
-		std::fill(array.get(), array.get() + arraySize, value);
-		tensor* t = new tensor(shape, array);
-		return *t;
-	}
-
 	tensor tensor::applyBinaryFloat(float(*func)(float, float), float value) const
 	{
 		if (is_contiguous())
@@ -704,11 +691,19 @@ namespace Tensor
 	{
 		static std::random_device rd;
 		static std::mt19937 gen(rd());
-		std::uniform_real_distribution<float> dis(min, max);
+		static std::uniform_real_distribution<float> dis(min, max);
 		return dis(gen);
 	}
 
-	tensor initUniformTensor(Shape shape, float min, float max)
+	float normalRandom(float mean, float std)
+	{
+		static std::random_device rd;
+		static std::mt19937 gen(rd());
+		static std::normal_distribution<float> dis(mean, std);
+		return dis(gen);
+	}
+
+	tensor Tensor::initFill(Shape shape, float value)
 	{
 		int arraySize = 1;
 		for (int i = 0; i < shape.dimension(); i++)
@@ -716,11 +711,67 @@ namespace Tensor
 			arraySize *= shape.dims[i];
 		}
 		std::shared_ptr<float[]> array = std::make_shared<float[]>(arraySize);
-		for (int i = 0; i < arraySize; i++)
+		std::fill(array.get(), array.get() + arraySize, value);
+		tensor* t = new tensor(shape, array);
+		return *t;
+	}
+
+	tensor initUniform(Shape shape, float min, float max)
+	{
+		int arraySize = 1;
+		for (int i = 0; i < shape.dimension(); i++)
 		{
-			array[i] = uniformRandom(min, max);
+			arraySize *= shape.dims[i];
 		}
+		std::shared_ptr<float[]> array = std::make_shared<float[]>(arraySize);
+		TensorThreadPool::getInstance().run(arraySize, [min, max, array](int start, int end) {
+			for (unsigned int idx = start; idx < end; idx++)
+			{
+				array[idx] = uniformRandom(min, max);
+			}
+			});
 		return tensor(shape, array);
+	}
+
+	tensor initNormal(Shape shape, float mean, float std)
+	{
+		int arraySize = 1;
+		for (int i = 0; i < shape.dimension(); i++)
+		{
+			arraySize *= shape.dims[i];
+		}
+		std::shared_ptr<float[]> array = std::make_shared<float[]>(arraySize);
+		TensorThreadPool::getInstance().run(arraySize, [mean, std, array](int start, int end) {
+			for (unsigned int idx = start; idx < end; idx++)
+			{
+				array[idx] = normalRandom(mean, std);
+			}
+			});
+		return tensor(shape, array);
+	}
+
+	tensor initXavier_uniform(Shape shape, int in, int out, float gain)
+	{
+		float limit = std::sqrt(6.0f / (in + out)) * gain;
+		return initUniform(shape, -limit, limit);
+	}
+
+	tensor initXavier_normal(Shape shape, int in, int out, float gain)
+	{
+		float std = std::sqrt(2.0f / (in + out)) * gain;
+		return initNormal(shape, 0.0f, std);
+	}
+
+	tensor initHe_normal(Shape shape, int in, float gain)
+	{
+		float std = std::sqrt(2.0f / in) * gain;
+		return initNormal(shape, 0.0f, std);
+	}
+
+	tensor initHe_uniform(Shape shape, int in, float gain)
+	{
+		float limit = std::sqrt(6.0f / in) * gain;
+		return initUniform(shape, -limit, limit);
 	}
 
 	void TensorThreadPool::run(int totalWork, std::function<void(int, int)> task)

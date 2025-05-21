@@ -186,10 +186,13 @@ namespace Tensor
 	tensor exp(const tensor& a);
 
 	float uniformRandom(float min, float max);
+	float normalRandom(float mean, float std);
 
-	tensor initFillTensor(Shape shape, float value);
-	tensor initUniformTensor(Shape shape, float min = 0, float max = 1);
-	tensor initXiavierTensor(Shape shape, float gain = 1);
-	tensor initNormalTensor(Shape shape, float mean = 0, float std = 1);
-	tensor initHeTensor(Shape shape, float a = 0, float gain = 1);
+	tensor initFill(Shape shape, float value);
+	tensor initUniform(Shape shape, float min = 0, float max = 1);
+	tensor initXavier_normal(Shape shape, int in, int out, float gain = 1);
+	tensor initXavier_uniform(Shape shape, int in, int out, float gain = 1);
+	tensor initNormal(Shape shape, float mean = 0, float std = 1);
+	tensor initHe_normal(Shape shape, int in, float gain = 1);
+	tensor initHe_uniform(Shape shape, int in, float gain = 1);
 }

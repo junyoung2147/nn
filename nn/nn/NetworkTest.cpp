@@ -71,8 +71,8 @@ void mnistTest(void)
 	Momentum momentum(model.layers, 0.01, 0.9);
 	std::cout << "SGD optimizer created" << std::endl;
 	
-	tensor input = load_mnist_data("C:\\Users\\user\\Desktop\\train-images-idx3-ubyte\\train-images-idx3-ubyte", 1000);
-	tensor label = load_mnist_labels("C:\\Users\\user\\Desktop\\train-labels-idx1-ubyte\\train-labels-idx1-ubyte", 1000);
+	tensor input = load_mnist_data("mnist\\train-images.idx3-ubyte", 1000);
+	tensor label = load_mnist_labels("mnist\\train-labels.idx1-ubyte", 1000);
 	
 	int batch_size = 32;
 	DataLoader data_loader = DataLoader(input, label, batch_size);
@@ -146,8 +146,8 @@ void initTest(void)
 	const int batch_size = 32;
 	float losses[4][num_epochs] = { 0 };
 
-	tensor input = load_mnist_data("C:\\Users\\user\\Desktop\\train-images-idx3-ubyte\\train-images-idx3-ubyte", num_samples);
-	tensor label = load_mnist_labels("C:\\Users\\user\\Desktop\\train-labels-idx1-ubyte\\train-labels-idx1-ubyte", num_samples);
+	tensor input = load_mnist_data("mnist\\train-images.idx3-ubyte", num_samples);
+	tensor label = load_mnist_labels("mnist\\train-labels.idx1-ubyte", num_samples);
 	DataLoader data_loader = DataLoader(input, label, batch_size);
 
 	float sum_loss = 0;
